@@ -1,0 +1,8 @@
+#!/bin/sh
+helper=$(ps aux | grep -v grep | grep kube-log-helper)
+
+if [ -z "$helper" ]; then
+    exit 1
+else
+    exit 0
+fi

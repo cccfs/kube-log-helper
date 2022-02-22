@@ -1,0 +1,13 @@
+busybox2:
+  image: busybox
+  restart: always
+  environment:
+    k8s_logs_busybox2: stdout
+    k8s_logs_busybox2_tags: app=busybox,stage=test
+    k8s_logs_busybox2_format: "json"
+  command: >
+    sh -c 'while true; do echo "{\"BackendName\":\"Traefik\",\"ClientHost\":\"10.244.36.0\",\"DownstreamStatus\":404,\"Duration\":125449,\"OriginDuration\":10234,\"OriginStatus\":404,\"Overhead\":115215,\"RequestContentSize\":0,\"RequestHost\":\"test-consul.deeproute.cn\",\"RequestMethod\":\"GET\",\"RequestPath\":\"/v1/health/service/traefik-http?passing=1\\u0026stale=\\u0026wait=60000ms\",\"level\":\"info\",\"msg\":\"\",\"request_User-Agent\":\"Go-http-client/1.1\",\"time\":\"2022-01-12T03:56:12Z\"}" && sleep 1; done'
+#    sh -c 'while true; do date "+%Y-%m-%d %H:%M:%S >> /tmp/tmp.log" && sleep 1; done'
+  log_opt:
+    max-size: '1k'
+    max-file: '2'
