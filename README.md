@@ -21,6 +21,7 @@
     ```
   
 # More
+env变量说明:
 * k8s_logs_$name=$path
   * name是生成日志索引的名称，path是日志文件路径，可以包含通配符，"stdout"是一个特殊值，表示收集容器stdout日志,遇到输出日志为'json'格式时会自动进行格式解析.
 * k8s_logs_$name_tags="k1=v1,k2=v2"
