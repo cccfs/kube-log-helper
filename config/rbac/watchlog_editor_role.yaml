@@ -1,0 +1,24 @@
+# permissions for end users to edit watchlogs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: watchlog-editor-role
+rules:
+- apiGroups:
+  - crd.k8s.deeproute.cn
+  resources:
+  - watchlogs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - crd.k8s.deeproute.cn
+  resources:
+  - watchlogs/status
+  verbs:
+  - get

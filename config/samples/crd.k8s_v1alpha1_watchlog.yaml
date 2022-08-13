@@ -1,0 +1,6 @@
+apiVersion: crd.k8s.deeproute.cn/v1alpha1
+kind: WatchLog
+metadata:
+  name: watchlog-sample
+spec:
+  # TODO(user): Add fields here
