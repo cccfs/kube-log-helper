@@ -42,26 +42,26 @@ func (node *LogInfoNode) insert(keys []string, value string) error {
 	return nil
 }
 
-func (node *LogInfoNode) parseTags() (map[string]string, error) {
+func (node *LogInfoNode) parseTagsContent() (map[string]string, error) {
 	// prefix_logs_xxx_tags: "cluster=test"
 	tags := node.get("tags")
 	return ParseBlocks(tags)
 }
 
-func (node *LogInfoNode) parseCustomConfig() (map[string]string, error) {
+func (node *LogInfoNode) parseConfigContent() (map[string]string, error) {
 	// prefix_logs_xxx_config: "multiline.pattern='^[0-9]{3}.*',multiline.negate=true,multiline.match=after"
 	config := node.get("config")
 	return ParseBlocks(config)
 }
 
-func (node *LogInfoNode) parseCovertIndex(tagsMap map[string]string) error {
+func (node *LogInfoNode) parseCovertIndexContent(name string, tagsMap map[string]string) error {
 	// prefix_logs_xxx_index: "project-demo-log"
 	indexName := node.get("index")
 	if _, ok := tagsMap["index"]; !ok {
 		if indexName != "" {
 			tagsMap["index"] = indexName
 		} else {
-			tagsMap["index"] = node.value
+			tagsMap["index"] = name
 		}
 	}
 
@@ -70,13 +70,24 @@ func (node *LogInfoNode) parseCovertIndex(tagsMap map[string]string) error {
 		if indexName != "" {
 			tagsMap["topic"] = indexName
 		} else {
-			tagsMap["topic"] = node.value
+			tagsMap["topic"] = name
 		}
 	}
 	return nil
 }
 
-func (node *LogInfoNode) parseLogFormat(tagsMap map[string]string) error {
+func (node *LogInfoNode) parseMetadataContent(podName, podNamespace, nodeName string, containerName []string) map[string]string {
+	metadata := make(map[string]string)
+	for _, container := range containerName {
+		PutIfNotEmpty(metadata, "k8s_pod", podName)
+		PutIfNotEmpty(metadata, "k8s_pod_namespace", podNamespace)
+		PutIfNotEmpty(metadata, "k8s_pod_container_name", container)
+		PutIfNotEmpty(metadata, "k8s_node_name", nodeName)
+	}
+	return metadata
+}
+
+func (node *LogInfoNode) parseLogFormatContent() error {
 	// prefix_logs_xxx_format: "none|json|csv|nginx|apache2|regexp"
 	format := node.children["format"]
 	if format == nil || format.value == "none" {
@@ -94,7 +105,7 @@ func (node *LogInfoNode) parseLogFormat(tagsMap map[string]string) error {
 	return nil
 }
 
-func (node *LogInfoNode) parseDefaultJavaLog() bool {
+func (node *LogInfoNode) parseDefaultJavaLogContent() bool {
 	// prefix_logs_xxx_java: "true"
 	var multiLine bool
 	java := node.get("java")
@@ -103,21 +114,3 @@ func (node *LogInfoNode) parseDefaultJavaLog() bool {
 	}
 	return multiLine
 }
-
-//func (node *LogInfoNode) parseLogOutputType(logPath string) (string, error) {
-//	// prefix_logs_xxx: "stdout"
-//	path := strings.TrimSpace(node.value)
-//	if path == "" {
-//		return ""
-//	}
-//
-//	// collection container stdout type logs
-//	if logPath == "stdout" {
-//		logFile := filepath.Base(logPath) + "*"
-//	}
-//	return Render(FilebeatInputConfTemplate, Data{
-//		"Stdout": true,
-//		"Multiline": node.parseDefaultJavaLog(),
-//		"HostDir":
-//	})
-//}

@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -68,23 +69,71 @@ func (r *WatchLogReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	if watchLogInstance.Status.Phase == "Pending" {
+	clp := &ContainerLogOptions{
+		podName:           watchLogInstance.Name,
+		podNamespace:      watchLogInstance.Namespace,
+		podContainerID:    "",
+		containerName:     make([]string, 0),
+		containerLogFiles: make([]string, 0),
+		containerStatus:   watchLogInstance.Status.Phase,
+		nodeName:          watchLogInstance.Spec.NodeName,
+	}
+
+	reason := string(watchLogInstance.Status.Phase)
+	//skipping for status 'Pending' events
+	if reason == string(corev1.PodPending) {
 		return ctrl.Result{}, nil
 	}
 
-	clp := &ContainerLogOptions{
-		podName:           watchLogInstance.Name,
-		namespace:         watchLogInstance.Namespace,
-		containerID:       "",
-		containerName:     make([]string, 0),
-		containerLogPaths: make([]string, 0),
-		containerStatus:   watchLogInstance.Status.Phase,
-	}
-	statusContainerStatuses := watchLogInstance.Status.ContainerStatuses
-	specContainers := watchLogInstance.Spec.Containers
-	clp.GetContainerLogPath(helper.indexPrefix, statusContainerStatuses, specContainers)
+	//var restarts int32 = 0
+	//readyContainers := 0
+	//
+	//if reason != "" {
+	//	reason = watchLogInstance.Status.Reason
+	//}
+	//for i := len(watchLogInstance.Status.ContainerStatuses) - 1; i >= 0; i-- {
+	//	container := watchLogInstance.Status.ContainerStatuses[i]
+	//
+	//	restarts += container.RestartCount
+	//	if container.State.Waiting != nil && container.State.Waiting.Reason != "" {
+	//		reason = container.State.Waiting.Reason
+	//	} else if container.State.Terminated != nil && container.State.Terminated.Reason != "" {
+	//		reason = container.State.Terminated.Reason
+	//	} else if container.State.Terminated != nil && container.State.Terminated.Reason == "" {
+	//		if container.State.Terminated.Signal != 0 {
+	//			reason = fmt.Sprintf("Signal:%d", container.State.Terminated.Signal)
+	//		} else {
+	//			reason = fmt.Sprintf("ExitCode:%d", container.State.Terminated.ExitCode)
+	//		}
+	//	} else if container.Ready && container.State.Running != nil {
+	//		readyContainers++
+	//	}
+	//	fmt.Println("ReasonPod:", container.Name, reason)
+	//}
+	//if watchLogInstance.DeletionTimestamp != nil {
+	//	reason = "Terminating"
+	//}
+	//fmt.Println("Reason:", reason)
+	//switch reason {
+	//// skip process 'Pending' status pod
+	//case string(corev1.PodPending):
+	//	return ctrl.Result{}, nil
+	//case string(corev1.PodRunning):
+	//	statusContainerStatuses := watchLogInstance.Status.ContainerStatuses
+	//	specContainers := watchLogInstance.Spec.Containers
+	//	clp.GetContainerLogPath(helper.indexPrefix, statusContainerStatuses, specContainers)
+	//case "Terminating":
+	//	fmt.Println("status", watchLogInstance.Name)
+	//}
 
-	fmt.Println(clp)
+	// container current state
+	statusContainerStatuses := watchLogInstance.Status.ContainerStatuses
+	// container desired state
+	specContainers := watchLogInstance.Spec.Containers
+
+	clp.JoinContainerLogPath(helper.indexPrefix, helper.indexSuffix, statusContainerStatuses, specContainers)
+
+	//fmt.Println(clp)
 	return ctrl.Result{}, nil
 }
 
@@ -97,6 +146,7 @@ func (r *WatchLogReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 type LogHelperOptions struct {
 	indexPrefix []string
+	indexSuffix string
 }
 
 func LogHelperInit() (*LogHelperOptions, error) {
@@ -106,21 +156,29 @@ func LogHelperInit() (*LogHelperOptions, error) {
 	if envLoggingPrefix != "" {
 		prefix = strings.Split(envLoggingPrefix, ",")
 	}
+	// default log index suffix is 'log', define LOGGING_INDEX_SUFFIX environment variables custom index suffix, e.g: %{+yyyy.MM.dd}
+	suffix := "log"
+	envLoggingSuffix := os.Getenv(EnvLoggingSuffix)
+	if envLoggingSuffix != "" {
+		suffix = envLoggingSuffix
+	}
 	return &LogHelperOptions{
 		indexPrefix: prefix,
+		indexSuffix: suffix,
 	}, nil
 }
 
 type ContainerLogOptions struct {
 	podName           string
-	namespace         string
-	containerID       string
+	podNamespace      string
+	podContainerID    string
 	containerName     []string
-	containerLogPaths []string
+	containerLogFiles []string
 	containerStatus   corev1.PodPhase
+	nodeName          string
 }
 
-func (clp *ContainerLogOptions) GetContainerEnv(indexPrefix []string, envVar []corev1.EnvVar) error {
+func (clp *ContainerLogOptions) GetContainerEnv(indexPrefix []string, indexSuffix string, envVar []corev1.EnvVar) error {
 	// get all container envVar
 	root := newLogInfoNode("")
 	for _, env := range envVar {
@@ -138,37 +196,55 @@ func (clp *ContainerLogOptions) GetContainerEnv(indexPrefix []string, envVar []c
 	}
 
 	for name, children := range root.children {
-		tagsMap, err := root.parseTags()
+		// cluster multi kube-log-helper env support
+		tagsMapContent, err := root.parseTagsContent()
 		if err != nil {
 			return err
 		}
 		// e.g: k8s_logs_xxx-xxx-xxx_tags: "env=test"
 		if os.Getenv(EnvClusterEnvName) != "" {
 			clusterName := os.Getenv(EnvClusterEnvName)
-			if tagsMap["env"] != clusterName {
+			if tagsMapContent["env"] != clusterName {
 				klog.Warning("cluster env with logs tag not match, skipping logs collection")
 				break
 			}
 		}
+		// parse filebeat input config
+		for _, logFile := range clp.containerLogFiles {
+			fmt.Println(logFile)
+			joinName := fmt.Sprintf("%s-%s", name, indexSuffix)
+			inputConfig, _ := filebeatInputConfigParse(logFile, tagsMapContent, joinName, clp.podName, clp.podNamespace, clp.nodeName, clp.containerName, children)
 
-		fmt.Println("children:", name, children)
+			fmt.Println(inputConfig)
+			joinConfigFile := fmt.Sprintf("%s/%s.yml", FilebeatConfDir, clp.podContainerID)
+			if _, err := os.Stat(FilebeatConfDir); os.IsNotExist(err) {
+				if err := os.Mkdir(FilebeatConfDir, 0755); err != nil {
+					klog.Warningf("%v", err)
+				}
+
+			}
+			if err := ioutil.WriteFile(joinConfigFile, []byte(inputConfig), 0600); err != nil {
+				klog.Exitf("unable to write %s: %v", FilebeatConfDir, err)
+			}
+		}
 	}
 	return nil
 }
 
-func (clp *ContainerLogOptions) GetContainerLogPath(indexPrefix []string, status []corev1.ContainerStatus, container []corev1.Container) error {
+func (clp *ContainerLogOptions) JoinContainerLogPath(indexPrefix []string, indexSuffix string, status []corev1.ContainerStatus, container []corev1.Container) error {
 	// csi-driver-d2t4w_gds-csi_csi-driver-4ea36377d2c0dbab0b02a5ffb350b64b4297993394b00e30629c61cd659accfc.log
 	// /var/log/containers log format: [pod name]_[namespace]_[container name]-[container id]
+	// if container name desired state with current state equal, join the container name log path
 	for _, containerList := range container {
 		for _, statusList := range status {
 			if statusList.Name == containerList.Name {
-				clp.containerID = strings.Split(statusList.ContainerID, "//")[1]
+				clp.podContainerID = strings.Split(statusList.ContainerID, "//")[1]
 				clp.containerName = append(clp.containerName, statusList.Name)
-				logFormat := fmt.Sprintf("%s/%s_%s_%s-%s.log", EnvLoggingPath, clp.podName, clp.namespace, statusList.Name, clp.containerID)
-				clp.containerLogPaths = append(clp.containerLogPaths, logFormat)
+				logFormat := fmt.Sprintf("%s/%s_%s_%s-%s.log", EnvLoggingPath, clp.podName, clp.podNamespace, statusList.Name, clp.podContainerID)
+				clp.containerLogFiles = append(clp.containerLogFiles, logFormat)
 			}
 		}
-		if err := clp.GetContainerEnv(indexPrefix, containerList.Env); err != nil {
+		if err := clp.GetContainerEnv(indexPrefix, indexSuffix, containerList.Env); err != nil {
 			return err
 		}
 	}

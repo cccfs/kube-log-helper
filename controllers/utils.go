@@ -40,3 +40,10 @@ func ParseBlocks(blocks string) (map[string]string, error) {
 	}
 	return blockMap, nil
 }
+
+func PutIfNotEmpty(store map[string]string, key, value string) {
+	if key == "" || value == "" {
+		return
+	}
+	store[key] = value
+}

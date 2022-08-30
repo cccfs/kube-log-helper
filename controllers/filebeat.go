@@ -40,6 +40,7 @@ func BeforeRun() (*LogHelperEntry, error) {
 type FilebeatCtrlInterface interface {
 	StartFilebeat() error
 	StopFilebeat() error
+	//ConfPath(container string) string
 }
 
 type FilebeatCtrlOptions struct {
@@ -67,6 +68,10 @@ func (f *FilebeatCtrlOptions) StopFilebeat() error {
 	f.watchDone <- true
 	return nil
 }
+
+//func (f *FilebeatCtrlOptions) ConfPath(container string) string {
+//	return fmt.Sprintf("%s/%s.yml", FilebeatConfDir, container)
+//}
 
 func (f *FilebeatCtrlOptions) StartFilebeat() error {
 	cmd := exec.Command(FilebeatBin, "-c", FilebeatConf)

@@ -9,6 +9,7 @@ const (
 
 	EnvLoggingPath                   string = "/var/log/containers"
 	EnvLoggingPrefix                 string = "LOGGING_INDEX_PREFIX" + "_logs_"
+	EnvLoggingSuffix                 string = "LOGGING_INDEX_SUFFIX"
 	EnvClusterEnvName                string = "CLUSTER_ENV_NAME"
 	EnvFilebeatLogLevel              string = "FILEBEAT_LOG_LEVEL"
 	EnvFilebeatMetricsEnabled        string = "FILEBEAT_METRICS_ENABLED"

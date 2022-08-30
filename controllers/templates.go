@@ -26,7 +26,6 @@ type FilebeatConfigOptions struct {
 var (
 	FilebeatInputConfTemplate = template.Must(template.New("FilebeatInputConf").Parse(
 		dedent.Dedent(`
-{{range .inputConfigList}}
 {{if .Stdout}}
 - type: container
 {{ else }}
@@ -38,7 +37,7 @@ var (
   multiline.match: after
 {{end}}
   paths:
-      - {{ .HostDir }}/{{ .File }}
+      - {{ .File }}
   scan_frequency: 1s
   fields_under_root: true
   {{if eq .Format "json"}}
@@ -51,7 +50,7 @@ var (
       {{range $key, $value := .Tags}}
       {{ $key }}: {{ $value }}
       {{end}}
-      {{range $key, $value := $.container}}
+      {{range $key, $value := .Metadata}}
       {{ $key }}: {{ $value }}
       {{end}}
   {{range $key, $value := .CustomConfigs}}
@@ -65,10 +64,9 @@ var (
   publisher_pipeline.disable_host: false
   {{range $key, $value := .Tags}}
   {{if eq $key "index"}}
-  {{ $key }}: "{{ $value }}-log"
+  {{ $key }}: "{{ $value }}"
   {{end}}
   {{end}}
-{{end}}
 `)))
 
 	FilebeatConfTemplate = template.Must(template.New("FilebeatConf").Parse(
@@ -94,7 +92,3 @@ filebeat.config:
     reload.period: 10s
 `)))
 )
-
-func GenerateFilebeatLogTemplate() (string, error) {
-	return Render(FilebeatConfTemplate, Data{})
-}
