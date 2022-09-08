@@ -119,19 +119,19 @@ func (r *WatchLogReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	//case string(corev1.PodPending):
 	//	return ctrl.Result{}, nil
 	//case string(corev1.PodRunning):
-	//	statusContainerStatuses := watchLogInstance.Status.ContainerStatuses
-	//	specContainers := watchLogInstance.Spec.Containers
-	//	clp.GetContainerLogPath(helper.indexPrefix, statusContainerStatuses, specContainers)
+	//	containerCurrentState := watchLogInstance.Status.ContainerStatuses
+	//	containerDesiredState := watchLogInstance.Spec.Containers
+	//	clp.GetContainerLogPath(helper.indexPrefix, containerCurrentState, containerDesiredState)
 	//case "Terminating":
 	//	fmt.Println("status", watchLogInstance.Name)
 	//}
 
 	// container current state
-	statusContainerStatuses := watchLogInstance.Status.ContainerStatuses
+	containerCurrentState := watchLogInstance.Status.ContainerStatuses
 	// container desired state
-	specContainers := watchLogInstance.Spec.Containers
+	containerDesiredState := watchLogInstance.Spec.Containers
 
-	clp.JoinContainerLogPath(helper.indexPrefix, helper.indexSuffix, statusContainerStatuses, specContainers)
+	clp.JoinContainerLogPath(helper.indexPrefix, helper.indexSuffix, containerCurrentState, containerDesiredState)
 
 	//fmt.Println(clp)
 	return ctrl.Result{}, nil
@@ -211,11 +211,13 @@ func (clp *ContainerLogOptions) GetContainerEnv(indexPrefix []string, indexSuffi
 		}
 		// parse filebeat input config
 		for _, logFile := range clp.containerLogFiles {
-			fmt.Println(logFile)
+			//fmt.Println(logFile)
+
 			joinName := fmt.Sprintf("%s-%s", name, indexSuffix)
 			inputConfig, _ := filebeatInputConfigParse(logFile, tagsMapContent, joinName, clp.podName, clp.podNamespace, clp.nodeName, clp.containerName, children)
 
-			fmt.Println(inputConfig)
+			//fmt.Println(inputConfig)
+
 			joinConfigFile := fmt.Sprintf("%s/%s.yml", FilebeatConfDir, clp.podContainerID)
 			if _, err := os.Stat(FilebeatConfDir); os.IsNotExist(err) {
 				if err := os.Mkdir(FilebeatConfDir, 0755); err != nil {
@@ -223,8 +225,11 @@ func (clp *ContainerLogOptions) GetContainerEnv(indexPrefix []string, indexSuffi
 				}
 
 			}
-			if err := ioutil.WriteFile(joinConfigFile, []byte(inputConfig), 0600); err != nil {
-				klog.Exitf("unable to write %s: %v", FilebeatConfDir, err)
+			// config files exists, jump out of the loop
+			if _, err := os.Stat(joinConfigFile); os.IsNotExist(err) {
+				if err := ioutil.WriteFile(joinConfigFile, []byte(inputConfig), 0600); err != nil {
+					klog.Exitf("unable to write %s: %v", FilebeatConfDir, err)
+				}
 			}
 		}
 	}
@@ -237,6 +242,7 @@ func (clp *ContainerLogOptions) JoinContainerLogPath(indexPrefix []string, index
 	// if container name desired state with current state equal, join the container name log path
 	for _, containerList := range container {
 		for _, statusList := range status {
+			fmt.Printf("name: %s status: running: %s ; waiting: %s; ter: %s", statusList.Name, statusList.State.Running, statusList.State.Waiting, statusList.State.Terminated)
 			if statusList.Name == containerList.Name {
 				clp.podContainerID = strings.Split(statusList.ContainerID, "//")[1]
 				clp.containerName = append(clp.containerName, statusList.Name)

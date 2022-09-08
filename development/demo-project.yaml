@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-http-demo
+  labels:
+    app: go-http-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: go-http-demo
+  template:
+    metadata:
+      labels:
+        app: go-http-demo
+    spec:
+      containers:
+      - name: go-http-demo
+        ports:
+        - containerPort: 8080
+          name: http
+        image: "reg.deeproute.ai/deeproute-public/go-http-demo:0.0.309969"
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: "k8s_logs_go-http-demo"
+            value: "stdout"
+      - name: nginx
+        ports:
+          - containerPort: 80
+            name: http
+        image: "reg.deeproute.ai/deeproute-public/nginx:1.19.3"
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: "k8s_logs_go-http-demo-nginx"
+            value: "stdout"
